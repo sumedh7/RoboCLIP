@@ -1,7 +1,6 @@
 from gym import Env, spaces
 import numpy as np
 from stable_baselines3 import PPO
-from d4rl_alt.kitchen.kitchen_envs import KitchenMicrowaveHingeSlideV0, KitchenKettleV0
 import torch as th
 from s3dg import S3D
 from gym.wrappers.time_limit import TimeLimit
