@@ -1,9 +1,9 @@
 [submodule "S3D_HowTo100M"]
 	path = S3D_HowTo100M
-	url = git@github.com:antoine77340/S3D_HowTo100M.git
+	url = https://github.com/antoine77340/S3D_HowTo100M.git
 [submodule "kitchen_alt"]
 	path = kitchen_alt
-	url = git@github.com:sumedh7/kitchen_alt.git
+	url = https://github.com/sumedh7/kitchen_alt.git
 [submodule "mjrl"]
 	path = mjrl
-	url = git@github.com:aravindr93/mjrl.git
+	url = https://github.com/aravindr93/mjrl.git
