@@ -7,6 +7,11 @@ We recommend using conda for installation and provide a `.yml` file for installa
 
 ```sh
 conda env create -f environment_roboclip.yml
+conda activate roboclip
+pip install -e kitchen_alt
+pip install -e kitchen_alt/kitchen/envs
+wget https://www.rocq.inria.fr/cluster-willow/amiech/howto100m/s3d_howto100m.pth
+wget https://www.rocq.inria.fr/cluster-willow/amiech/howto100m/s3d_dict.npy
 ```
 
 
