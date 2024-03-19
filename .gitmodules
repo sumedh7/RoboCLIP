@@ -4,3 +4,6 @@
 [submodule "kitchen_alt"]
 	path = kitchen_alt
 	url = git@github.com:sumedh7/kitchen_alt.git
+[submodule "mjrl"]
+	path = mjrl
+	url = git@github.com:aravindr93/mjrl.git
