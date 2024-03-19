@@ -6,8 +6,7 @@ This repository contains the implementation for the NeurIPS 2023 paper, [RoboCLI
 We recommend using conda for installation and provide a `.yml` file for installation. 
 
 ```sh
-cd RoboCLIP
-git submodule update --init --recursive
+git clone https://github.com/sumedh7/RoboCLIP.git --recursive
 conda env create -f environment_roboclip.yml
 conda activate roboclip
 pip install -e mjrl
