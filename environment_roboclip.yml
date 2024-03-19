@@ -104,7 +104,8 @@ dependencies:
       - moviepy==1.0.3
         #- mpi4py==3.0.3
       - mujoco==2.2.1
-      - mujoco-py==2.1.2.14
+      #- mujoco-py==2.1.2.14
+      - mujoco-py==2.0.2.5 # more compatiable with more machines now
       - munch==2.5.0
       - numpy==1.23.4
       - numpy-quaternion==2022.4.2
