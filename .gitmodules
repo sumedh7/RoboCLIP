@@ -7,3 +7,6 @@
 [submodule "mjrl"]
 	path = mjrl
 	url = https://github.com/aravindr93/mjrl.git
+[submodule "Metaworld"]
+	path = Metaworld
+	url = https://github.com/sumedh7/Metaworld.git
