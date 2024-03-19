@@ -1,5 +1,5 @@
 # Pytorch + StableBaselines3 Implementation of RoboCLIP
-This repository contains the implementation for the NeurIPS 2023 paper, [RoboCLIP: One Demonstration is Enough to Learn Robot Policies](https://arxiv.org/abs/2310.07899). To use, please first download the `s3dg.py` file from [S3D Repo](https://github.com/antoine77340/S3D_HowTo100M), the official repo for our backbone model. Please also follow the instructions for downloading the `model_dict` and weights from the aforementioned repo. You will also need to install Metaworld and Franka Kitchen. 
+This repository contains the implementation for the NeurIPS 2023 paper, [RoboCLIP: One Demonstration is Enough to Learn Robot Policies](https://arxiv.org/abs/2310.07899).
 
 ## Setting up the env
 
