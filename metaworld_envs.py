@@ -5,6 +5,7 @@ import torch as th
 from s3dg import S3D
 from gym.wrappers.time_limit import TimeLimit
 from stable_baselines3.common.vec_env.subproc_vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.callbacks import CheckpointCallback
 from PIL import Image, ImageSequence
 import torch as th
@@ -202,11 +203,131 @@ class MetaworldDense(Env):
         if not self.time:
             return self.env.reset()
         return np.concatenate([self.env.reset(), np.array([0.0])])
+    
+class MetaworldInteractive(Env):
+    def __init__(self, env_id, text_string=None, time=False, video_path=None, rank=0, human=True):
+        super(MetaworldInteractive,self)
+        door_open_goal_hidden_cls = ALL_V2_ENVIRONMENTS_GOAL_HIDDEN[env_id]
+        env = door_open_goal_hidden_cls(seed=rank)
+        self.env = TimeLimit(env, max_episode_steps=128)
+        self.time = time
+        if not self.time:
+            self.observation_space = self.env.observation_space
+        else:
+            self.observation_space = Box(low=-8.0, high=8.0, shape=(self.env.observation_space.shape[0]+1,), dtype=np.float32)
+        self.action_space = self.env.action_space
+        self.past_observations = []
+        self.window_length = 16
+        self.net = S3D('s3d_dict.npy', 512)
+
+        # Load the model weights
+        self.net.load_state_dict(th.load('s3d_howto100m.pth'))
+        # Evaluation mode
+        self.net = self.net.eval()
+        self.target_embedding = None
+        if text_string:
+            text_output = self.net.text_module([text_string])
+            self.target_embedding = text_output['text_embedding']
+        if video_path:
+            frames = readGif(video_path)
+            
+            if human:
+                frames = self.preprocess_human_demo(frames)
+            else:
+                frames = self.preprocess_metaworld(frames)
+            if frames.shape[1]>3:
+                frames = frames[:,:3]
+            video = th.from_numpy(frames)
+            video_output = self.net(video.float())
+            self.target_embedding = video_output['video_embedding']
+        assert self.target_embedding is not None
+
+        self.counter = 0
+
+    def get_obs(self):
+        return self.baseEnv._get_obs(self.baseEnv.prev_time_step)
+
+    def preprocess_human_demo(self, frames):
+        frames = np.array(frames)
+        frames = frames[None, :,:,:,:]
+        frames = frames.transpose(0, 4, 1, 2, 3)
+        return frames
+
+    def preprocess_metaworld(self, frames, shorten=True):
+        center = 240, 320
+        h, w = (250, 250)
+        x = int(center[1] - w/2)
+        y = int(center[0] - h/2)
+        # frames = np.array([cv2.resize(frame, dsize=(250, 250), interpolation=cv2.INTER_CUBIC) for frame in frames])
+        frames = np.array([frame[y:y+h, x:x+w] for frame in frames])
+        a = frames
+        frames = frames[None, :,:,:,:]
+        frames = frames.transpose(0, 4, 1, 2, 3)
+        if shorten:
+            frames = frames[:, :,::4,:,:]
+        # frames = frames/255
+        return frames
+        
+    
+    def render(self):
+        frame = self.env.render()
+        # center = 240, 320
+        # h, w = (250, 250)
+        # x = int(center[1] - w/2)
+        # y = int(center[0] - h/2)
+        # frame = frame[y:y+h, x:x+w]
+        return frame
+
+
+    def step(self, action):
+        obs, _, done, info = self.env.step(action)
+        self.past_observations.append(self.env.render())
+        self.counter += 1
+        if self.counter % 32 == 0:
+            '''for i in range(5):
+                for frame in self.past_observations:  # Display the last 10 frames
+                    cv2.imshow('Frame', frame)
+                    cv2.waitKey(100)  # 100ms delay between frames
+                cv2.destroyAllWindows()  # Close the window after displaying the frames'''
+            #print("32 steps reached. Please provide new instruction:")
+            #new_instruction = input()  # Assuming new instruction is text. Modify as needed.
+            # Process new instruction
+            if self.counter==32:
+                new_instruction = "robot arm continuously moving toward green drawer"
+            elif self.counter==64:
+                new_instruction = "robot arm touching green drawer handle"
+            elif self.counter==96:
+                new_instruction = "robot gripper grasping green drawer handle"
+            elif self.counter==128:
+                new_instruction = "robot grasping green drawer handle and pulling it open"
+            text_output = self.net.text_module([new_instruction])
+            self.target_embedding = text_output['text_embedding']
+        t = self.counter/128
+        if self.time:
+            obs = np.concatenate([obs, np.array([t])])
+        if done or self.counter % 32 == 0:  # Modify reward calculation to happen on 10th step or if done
+            frames = self.preprocess_metaworld(self.past_observations,shorten=False)
+            video = th.from_numpy(frames)
+            video_output = self.net(video.float())
+            video_embedding = video_output['video_embedding']
+            similarity_matrix = th.matmul(self.target_embedding, video_embedding.t())
+            reward = similarity_matrix.detach().numpy()[0][0]
+        else:
+            reward = 0.0  # Default reward for steps without feedback
+        return obs, reward, done, info
+
+    def reset(self):
+        self.past_observations = []
+        self.counter = 0
+        if not self.time:
+            return self.env.reset()
+        return np.concatenate([self.env.reset(), np.array([0.0])])
 
 
 
 
-def make_env(env_type, env_id, rank, seed=0):
+
+def make_env(env_type, env_id, text_string,rank, seed=0):
     """
     Utility function for multiprocessed env.
 
@@ -223,6 +344,8 @@ def make_env(env_type, env_id, rank, seed=0):
         
         elif env_type == "sparse_original":
             env = KitchenEnvSparseOriginalReward(time=True)
+        elif env_type=="interactive":
+            env= MetaworldInteractive(env_id=env_id, text_string=text_string, time=True, rank=rank, human=True)
         else:
             env = MetaworldDense(env_id=env_id, time=True, rank=rank)
         env = Monitor(env, os.path.join(log_dir, str(rank)))
@@ -241,14 +364,18 @@ def main():
     log_dir = f"metaworld/{args.env_id}_{args.env_type}{args.dir_add}"
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-    envs = SubprocVecEnv([make_env(args.env_type, args.env_id, i) for i in range(args.n_envs)])
+    
+    if args.n_envs==1:
+        envs = DummyVecEnv([make_env(args.env_type, args.env_id,args.text_string, 0)])
+    else:
+        envs = SubprocVecEnv([make_env(args.env_type, args.env_id,args.text_string, i) for i in range(args.n_envs)])
 
     if not args.pretrained:
         model = PPO("MlpPolicy", envs, verbose=1, tensorboard_log=log_dir, n_steps=args.n_steps, batch_size=args.n_steps*args.n_envs, n_epochs=1, ent_coef=0.5)
     else:
         model = PPO.load(args.pretrained, env=envs, tensorboard_log=log_dir)
 
-    eval_env = SubprocVecEnv([make_env("dense_original", args.env_id, i) for i in range(10, 10+args.n_envs)])#KitchenEnvDenseOriginalReward(time=True)
+    eval_env = SubprocVecEnv([make_env("dense_original", args.env_id,None, i) for i in range(10, 10+args.n_envs)])#KitchenEnvDenseOriginalReward(time=True)
     # Use deterministic actions for evaluation
     eval_callback = EvalCallback(eval_env, best_model_save_path=log_dir,
                                  log_path=log_dir, eval_freq=500,
