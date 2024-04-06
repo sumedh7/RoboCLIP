@@ -306,7 +306,7 @@ class MetaworldInteractive(Env):
         if self.time:
             obs = np.concatenate([obs, np.array([t])])
         if done or self.counter % 32 == 0:  # Modify reward calculation to happen on 10th step or if done
-            frames = self.preprocess_metaworld(self.past_observations,shorten=False)
+            frames = self.preprocess_metaworld(self.past_observations[-32:],shorten=False)
             video = th.from_numpy(frames)
             video_output = self.net(video.float())
             video_embedding = video_output['video_embedding']
