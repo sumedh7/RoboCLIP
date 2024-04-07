@@ -71,7 +71,8 @@ def get_args():
 	parser.add_argument('--n-envs', type=int, default=8)
 	parser.add_argument('--n-steps', type=int, default=128)
 	parser.add_argument('--pretrained', type=str, default=None)
-	parser.add_argument('--timed', type=bool, default=True)
+	parser.add_argument('--timed', type=int, default=1)
+	parser.add_argument('--VLM', type=int, default=1)
 	args = parser.parse_args()
 	return args
 
@@ -343,8 +344,8 @@ class CreditAssignment():
 	
 
 class A2CLearner():
-	def __init__(self, actor, critic, queue, entropy_beta=0,
-				 actor_lr=4e-4, critic_lr=4e-3, max_grad_norm=0.5):
+	def __init__(self, actor, critic, queue, entropy_beta=0.1,
+				 actor_lr=4e-3, critic_lr=4e-2, max_grad_norm=0.5):
 		self.max_grad_norm = max_grad_norm
 		self.actor = actor
 		self.critic = critic
@@ -415,7 +416,7 @@ class A2CLearner():
 
 
 class Runner():
-	def __init__(self, env,eval_env,queue,a2clearner,log_dir,eval_freq=640):
+	def __init__(self, env,eval_env,queue,a2clearner,log_dir,VLM,eval_freq=640):
 		self.env = env
 		self.state = None
 		self.done = True
@@ -430,6 +431,7 @@ class Runner():
 		self.best_mean_reward = -np.inf
 		self.eval_env=eval_env
 		self.save_path=log_dir
+		self.VLM=VLM
 
 	def evaluate_model(self):
 		total_rewards = []
@@ -453,9 +455,12 @@ class Runner():
 			if self.env.get_counter() % 32 == 0 and self.env.get_counter()!=0:
 				print("32 steps reached. Please provide feedback:")
 				self.env.show_progress()
-				new_instruction = input()  # Assuming new instruction is text. Modify as needed.
-				# Process new instruction
-				fb = self.env.get_similarity(new_instruction,False)
+				if self.VLM:
+					new_instruction = input()  # Assuming new instruction is text. Modify as needed.
+					# Process new instruction
+					fb = self.env.get_similarity(new_instruction,False)
+				else:
+					fb=int(input())
 				print("Feedback: ",fb)
 			self.state_start_time = self.steps
 			self.queue.put(
@@ -584,9 +589,11 @@ def main():
 		os.makedirs(log_dir)
 
 	writer = SummaryWriter(log_dir)
+	timed=bool(args.timed)
+	VLM=bool(args.VLM)
 
-	env = make_env(args.env_type, args.env_id,args.n_steps,args.text_string,args.timed, 0)
-	eval_env=make_env("dense_original", args.env_id,args.n_steps,None,args.timed, 0)
+	env = make_env(args.env_type, args.env_id,args.n_steps,args.text_string,timed, 0)
+	eval_env=make_env("dense_original", args.env_id,args.n_steps,None,timed, 0)
 	state_dim = env.observation_space.shape[0]
 	n_actions = env.action_space.shape[0]
 	actor = Actor(state_dim, n_actions)
@@ -617,7 +624,8 @@ def main():
 	
 	Feedback_queue = Queue()
 	learner = A2CLearner(actor, critic,Feedback_queue)
-	runner = Runner(env,eval_env,Feedback_queue,learner,log_dir)
+	print("VLM: ",VLM)
+	runner = Runner(env,eval_env,Feedback_queue,learner,log_dir,VLM)
 	
 	while runner.steps<args.total_time_steps:
 		runner.run(args.n_steps)
