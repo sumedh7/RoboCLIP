@@ -4,7 +4,6 @@ from multiprocessing import Process, Queue
 from functools import partial
 
 from torch._C import device
-from play import PyGymCallback, Player,EvalCallback
 from torch.utils.tensorboard import SummaryWriter
 import pygame
 import os 
@@ -136,6 +135,16 @@ class MetaworldInteractive(Env):
 					cv2.imshow('Frame', frame)
 					cv2.waitKey(100)  # 100ms delay between frames
 				cv2.destroyAllWindows()  # Close the window after displaying the frames
+
+				'''center = 240, 320
+				h, w = (250, 250)
+				x = int(center[1] - w/2)
+				y = int(center[0] - h/2)
+				frames2 = np.array([frame[y:y+h, x:x+w] for frame in frames])
+				for frame2 in frames2: 
+					cv2.imshow('Frame', frame2)
+					cv2.waitKey(100)  # 100ms delay between frames
+				cv2.destroyAllWindows()  # Close the window after displaying the frames'''
 	
 	def get_similarity(self,feedback,shorten=False):
 		text_output = self.net.text_module([feedback])
@@ -325,12 +334,12 @@ def clip_grad_norm_(module, max_grad_norm):
 	nn.utils.clip_grad_norm_([p for g in module.param_groups for p in g["params"]], max_grad_norm)
 
 class CreditAssignment():
-	def __init__(self, dist: scipy.stats.rv_continuous):
+	def __init__(self, dist):
 		self.dist = dist
 		
 	def __call__(self, s_start: int, h_start: int) -> int:
-		step_diff = abs(h_start - s_start)
-		return self.dist.cdf(step_diff)
+		step_diff = h_start - s_start
+		return self.dist.pdf(step_diff)
 	
 
 class A2CLearner():
@@ -440,7 +449,7 @@ class Runner():
 
 	def before_step(self):
 			fb=0
-			print("STEP: ",self.env.get_counter())
+			#print("STEP: ",self.env.get_counter())
 			if self.env.get_counter() % 32 == 0 and self.env.get_counter()!=0:
 				print("32 steps reached. Please provide feedback:")
 				self.env.show_progress()
@@ -448,11 +457,11 @@ class Runner():
 				# Process new instruction
 				fb = self.env.get_similarity(new_instruction,False)
 				print("Feedback: ",fb)
-			self.state_start_time = self.env.get_counter()
+			self.state_start_time = self.steps
 			self.queue.put(
 					dict(
 						feedback = fb,
-						h_time = self.env.get_counter()
+						h_time = self.steps
 					))
 			
 
@@ -481,13 +490,16 @@ class Runner():
 		)
 
 		if fb != 0:
-			ca = CreditAssignment(uniform(0, 32))
+			ca = CreditAssignment(norm(loc=0, scale=32/4))
 			state, action, credit = [], [], []
 			for win in self.sliding_window:
-				credit_for_state = ca(s_start=win["s_start"],h_start=h_time)
+				if h_time-win["s_start"]>32:
+					credit_for_state=0
+				else:
+					credit_for_state = ca(s_start=win["s_start"],h_start=h_time)
 				#print("credit",credit_for_state,"s_start",win["s_start"],"h_start",h_time)
 				if credit_for_state !=0:
-					#print("credit!=0")
+					print("credit: ",credit_for_state, "step: ",win["s_start"])
 					state.append(t(win['state']))
 					action.append(t(win['action']))
 					# credit.append(torch.tensor(credit_for_state, dtype=torch.float32).to(device))
