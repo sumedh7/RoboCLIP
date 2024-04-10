@@ -2,6 +2,7 @@ from gym import Env, spaces
 import numpy as np
 from stable_baselines3 import PPO
 import torch
+import torch.nn.functional as F
 from torch import nn
 from s3dg import S3D
 from gym.wrappers.time_limit import TimeLimit
@@ -41,17 +42,26 @@ from kitchen_env_wrappers import readGif
 from matplotlib import animation
 import matplotlib.pyplot as plt
 
+def mish(input):
+    return input * torch.tanh(F.softplus(input))
+
+class Mish(nn.Module):
+    def __init__(self): super().__init__()
+    def forward(self, input): return mish(input)
+
 
 class Actor(nn.Module):
 	def __init__(self, state_dim, n_actions, activation=nn.Tanh):
 		super().__init__()
 		self.n_actions = n_actions
 		self.model = nn.Sequential(
-			nn.Linear(state_dim, 64),
+			nn.Linear(state_dim, 150),
 			activation(),
-			nn.Linear(64, 64),
+			nn.Linear(150, 150),
 			activation(),
-			nn.Linear(64, n_actions)
+			nn.Linear(150, 128),
+			activation(),
+			nn.Linear(128, n_actions)
 		)
 		
 		logstds_param = nn.Parameter(torch.full((n_actions,), 0.1))
@@ -150,7 +160,7 @@ class MetaworldSparse(Env):
 			#print("INSIDE")
 			frames = self.preprocess_metaworld(self.past_observations)
 			fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-			out = cv2.VideoWriter('best_model_a2c_300length_norm_NoVLM.mp4', fourcc, 20, (640, 480))
+			out = cv2.VideoWriter('best_model_a2c_128length_VLM_deep150_55grad_001beta.mp4', fourcc, 20, (640, 480))
 
 			for frame in self.past_observations:
 				# Convert frames to BGR format for OpenCV if necessary
@@ -186,12 +196,12 @@ def t(x):
 
 def visualize_policy(env_id, model_path,a2c):
 	#env = MetaworldSparse(env_id=env_id, video_path="./gifs/human_opening_door.gif", time=True, rank=0, human=True)
-	env = MetaworldSparse(env_id=env_id,max_episode_steps=300 ,text_string="robot opening green drawer", time=True, rank=0, human=True)
-	env = TimeLimit(env, max_episode_steps=300)
+	env = MetaworldSparse(env_id=env_id,max_episode_steps=128 ,text_string="robot closing green drawer", time=True, rank=0, human=True)
+	env = TimeLimit(env, max_episode_steps=128)
 	if a2c:
 		state_dim = env.observation_space.shape[0]
 		n_actions = env.action_space.shape[0]
-		model = Actor(state_dim, n_actions)
+		model = Actor(state_dim, n_actions,Mish)
 		checkpoint = torch.load(model_path)
 		model.load_state_dict(checkpoint['actor_model_state_dict'])
 		model.eval()
@@ -199,7 +209,7 @@ def visualize_policy(env_id, model_path,a2c):
 		model = PPO.load(model_path)
 	obs = env.reset()
 	count=0
-	for _ in range(300):  # Adjust the range for longer or shorter episodes
+	for _ in range(128):  # Adjust the range for longer or shorter episodes
 		if a2c:
 			dists = model(t(obs))
 			actions = dists.sample().detach().data.numpy()
@@ -214,6 +224,6 @@ def visualize_policy(env_id, model_path,a2c):
 			obs = env.reset()
 
 if __name__ == "__main__":
-	env_id = "drawer-open-v2-goal-hidden"  # Replace with your environment ID
-	model_path = "/home/kurt/IRL/RoboCLIP/metaworld/drawer-open-v2-goal-hidden_interactiveTESTa2cT_timed_longer_No_VLM/best_model.pth"  # Update this path to your model
+	env_id = "drawer-close-v2-goal-hidden"  # Replace with your environment ID
+	model_path = "/home/kurt/IRL/RoboCLIP/metaworld/drawer-close-v2-goal-hidden_interactiveTESTa2cT_timed_128_VLM_deeper150_55grad_001beta/best_model.pth"  # Update this path to your model
 	visualize_policy(env_id, model_path,a2c=True)

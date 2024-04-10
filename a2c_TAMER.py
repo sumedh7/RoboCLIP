@@ -73,8 +73,17 @@ def get_args():
 	parser.add_argument('--pretrained', type=str, default=None)
 	parser.add_argument('--timed', type=int, default=1)
 	parser.add_argument('--VLM', type=int, default=1)
+	parser.add_argument('--n-frames', type=int, default=32)
+	parser.add_argument('--evaluative', type=int, default=1)
 	args = parser.parse_args()
 	return args
+
+def mish(input):
+    return input * torch.tanh(F.softplus(input))
+
+class Mish(nn.Module):
+    def __init__(self): super().__init__()
+    def forward(self, input): return mish(input)
 
 class MetaworldInteractive(Env):
 	def __init__(self, env_id, max_episode_steps,text_string=None, time=False, video_path=None, rank=0, human=True):
@@ -150,7 +159,7 @@ class MetaworldInteractive(Env):
 	def get_similarity(self,feedback,shorten=False):
 		text_output = self.net.text_module([feedback])
 		self.target_embedding = text_output['text_embedding']
-		frames = self.preprocess_metaworld(self.past_observations[-32:],shorten=shorten)
+		frames = self.preprocess_metaworld(self.past_observations[-args.n_frames:],shorten=shorten)
 		video = th.from_numpy(frames)
 		video_output = self.net(video.float())
 		video_embedding = video_output['video_embedding']
@@ -300,11 +309,13 @@ class Actor(nn.Module):
 		super().__init__()
 		self.n_actions = n_actions
 		self.model = nn.Sequential(
-			nn.Linear(state_dim, 64),
+			nn.Linear(state_dim, 150),
 			activation(),
-			nn.Linear(64, 64),
+			nn.Linear(150, 150),
 			activation(),
-			nn.Linear(64, n_actions)
+			nn.Linear(150, 128),
+			activation(),
+			nn.Linear(128, n_actions)
 		)
 		
 		logstds_param = nn.Parameter(torch.full((n_actions,), 0.1))
@@ -321,11 +332,13 @@ class Critic(nn.Module):
 	def __init__(self, state_dim, activation=nn.Tanh):
 		super().__init__()
 		self.model = nn.Sequential(
-			nn.Linear(state_dim, 64),
+			nn.Linear(state_dim, 150),
 			activation(),
-			nn.Linear(64, 64),
+			nn.Linear(150, 150),
 			activation(),
-			nn.Linear(64, 1),
+			nn.Linear(150, 128),
+			activation(),
+			nn.Linear(128, 1),
 		)
 	
 	def forward(self, X):
@@ -344,8 +357,8 @@ class CreditAssignment():
 	
 
 class A2CLearner():
-	def __init__(self, actor, critic, queue, entropy_beta=0.1,
-				 actor_lr=4e-3, critic_lr=4e-2, max_grad_norm=0.5):
+	def __init__(self, actor, critic, queue, entropy_beta=0.001,
+				 actor_lr=4e-3, critic_lr=4e-2, max_grad_norm=0.55):
 		self.max_grad_norm = max_grad_norm
 		self.actor = actor
 		self.critic = critic
@@ -416,7 +429,7 @@ class A2CLearner():
 
 
 class Runner():
-	def __init__(self, env,eval_env,queue,a2clearner,log_dir,VLM,eval_freq=640):
+	def __init__(self, env,eval_env,queue,a2clearner,log_dir,VLM,evaluative,eval_freq=640):
 		self.env = env
 		self.state = None
 		self.done = True
@@ -432,6 +445,7 @@ class Runner():
 		self.eval_env=eval_env
 		self.save_path=log_dir
 		self.VLM=VLM
+		self.evaluative=evaluative
 
 	def evaluate_model(self):
 		total_rewards = []
@@ -452,8 +466,9 @@ class Runner():
 	def before_step(self):
 			fb=0
 			#print("STEP: ",self.env.get_counter())
-			if self.env.get_counter() % 32 == 0 and self.env.get_counter()!=0:
-				print("32 steps reached. Please provide feedback:")
+			if self.env.get_counter() % args.n_frames == 0 and self.env.get_counter()!=0:
+				#if self.evaluative:
+				print(args.n_frames," steps reached. Please provide feedback:")
 				self.env.show_progress()
 				if self.VLM:
 					new_instruction = input()  # Assuming new instruction is text. Modify as needed.
@@ -591,13 +606,14 @@ def main():
 	writer = SummaryWriter(log_dir)
 	timed=bool(args.timed)
 	VLM=bool(args.VLM)
+	evaluative=bool(args.evaluative)
 
 	env = make_env(args.env_type, args.env_id,args.n_steps,args.text_string,timed, 0)
 	eval_env=make_env("dense_original", args.env_id,args.n_steps,None,timed, 0)
 	state_dim = env.observation_space.shape[0]
 	n_actions = env.action_space.shape[0]
-	actor = Actor(state_dim, n_actions)
-	critic = Critic(state_dim)
+	actor = Actor(state_dim, n_actions,activation=Mish)
+	critic = Critic(state_dim,activation=Mish)
 	
 		# Assuming 'env' is your Gym environment instance
 	'''observation_dim = env.observation_space.shape[0]
@@ -625,7 +641,7 @@ def main():
 	Feedback_queue = Queue()
 	learner = A2CLearner(actor, critic,Feedback_queue)
 	print("VLM: ",VLM)
-	runner = Runner(env,eval_env,Feedback_queue,learner,log_dir,VLM)
+	runner = Runner(env,eval_env,Feedback_queue,learner,log_dir,VLM,evaluative)
 	
 	while runner.steps<args.total_time_steps:
 		runner.run(args.n_steps)
