@@ -136,10 +136,11 @@ class MetaworldInteractive(Env):
 		return self.counter
 	
 	def show_progress(self):
-		if len(self.past_observations)%self.max_episode_steps==0:
+		'''if len(self.past_observations)%self.max_episode_steps==0:
 			frames=self.past_observations[-self.max_episode_steps:]
 		else:
-			frames=self.past_observations[-32:]
+			frames=self.past_observations[-32:]'''
+		frames=self.past_observations[-32:]
 		for i in range(3):
 				for frame in frames: 
 					cv2.imshow('Frame', frame)
@@ -220,7 +221,7 @@ class MetaworldInteractive(Env):
 
 	def reset(self):
 		self.past_observations = []
-		self.counter = 0
+		self.counter = 1
 		if not self.time:
 			return self.env.reset()
 		return np.concatenate([self.env.reset(), np.array([0.0])])
@@ -243,7 +244,7 @@ class MetaworldDense(Env):
 		self.action_space = self.env.action_space
 		self.past_observations = []
 		
-		self.counter = 0
+		self.counter = 1
 
 	def get_obs(self):
 		return self.baseEnv._get_obs(self.baseEnv.prev_time_step)
@@ -357,8 +358,8 @@ class CreditAssignment():
 	
 
 class A2CLearner():
-	def __init__(self, actor, critic, queue, entropy_beta=0.001,
-				 actor_lr=4e-3, critic_lr=4e-2, max_grad_norm=0.55):
+	def __init__(self, actor, critic, queue, entropy_beta=0.0001,
+				 actor_lr=8e-4, critic_lr=7e-3, max_grad_norm=0.60):
 		self.max_grad_norm = max_grad_norm
 		self.actor = actor
 		self.critic = critic
@@ -429,11 +430,11 @@ class A2CLearner():
 
 
 class Runner():
-	def __init__(self, env,eval_env,queue,a2clearner,log_dir,VLM,evaluative,eval_freq=640):
+	def __init__(self, env,eval_env,queue,a2clearner,log_dir,VLM,evaluative,eval_freq=256):
 		self.env = env
 		self.state = None
 		self.done = True
-		self.steps = 0
+		self.steps = 1
 		self.episode_reward = 0
 		self.episode_rewards = []
 		self.queue = queue
@@ -461,14 +462,15 @@ class Runner():
 				total_reward += reward
 			total_rewards.append(total_reward)
 		avg_reward = sum(total_rewards) / len(total_rewards)
+		writer.add_scalar("eval_avg_reward", avg_reward, global_step=self.steps)
 		return avg_reward
 
-	def before_step(self):
+	def feedback(self):
 			fb=0
-			#print("STEP: ",self.env.get_counter())
-			if self.env.get_counter() % args.n_frames == 0 and self.env.get_counter()!=0:
+			#print("STEP_env: ",self.env.get_counter(),"STEP_runner:",self.steps)
+			if self.steps % args.n_frames == 0 and self.steps!=0:
 				#if self.evaluative:
-				print(args.n_frames," steps reached. Please provide feedback:")
+				print(args.n_frames," steps reached. Please provide feedback (",self.env.get_counter()-1,"/",args.n_steps,"):")
 				self.env.show_progress()
 				if self.VLM:
 					new_instruction = input()  # Assuming new instruction is text. Modify as needed.
@@ -554,7 +556,6 @@ class Runner():
 		
 		for i in range(max_steps):
 			if self.done: self.reset()
-			self.before_step()
 			
 			self.action=self.a2clearner.get_action(self.state,self.env.action_space.low.min(),self.env.action_space.high.max())
 
@@ -562,6 +563,7 @@ class Runner():
 
 
 			next_state, reward, self.done, info = self.env.step(self.action)
+			self.feedback()
 			self.after_step()
 
 			self.state = next_state
@@ -641,7 +643,7 @@ def main():
 	Feedback_queue = Queue()
 	learner = A2CLearner(actor, critic,Feedback_queue)
 	print("VLM: ",VLM)
-	runner = Runner(env,eval_env,Feedback_queue,learner,log_dir,VLM,evaluative)
+	runner = Runner(env,eval_env,Feedback_queue,learner,log_dir,VLM,evaluative,args.n_steps)
 	
 	while runner.steps<args.total_time_steps:
 		runner.run(args.n_steps)

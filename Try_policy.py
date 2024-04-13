@@ -160,7 +160,7 @@ class MetaworldSparse(Env):
 			#print("INSIDE")
 			frames = self.preprocess_metaworld(self.past_observations)
 			fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-			out = cv2.VideoWriter('best_model_a2c_128length_VLM_deep150_55grad_001beta.mp4', fourcc, 20, (640, 480))
+			out = cv2.VideoWriter('best_model_a2c_128length_close_VLM_deep150_65grad_0001beta_smaller_lr.mp4', fourcc, 20, (640, 480))
 
 			for frame in self.past_observations:
 				# Convert frames to BGR format for OpenCV if necessary
@@ -225,5 +225,5 @@ def visualize_policy(env_id, model_path,a2c):
 
 if __name__ == "__main__":
 	env_id = "drawer-close-v2-goal-hidden"  # Replace with your environment ID
-	model_path = "/home/kurt/IRL/RoboCLIP/metaworld/drawer-close-v2-goal-hidden_interactiveTESTa2cT_timed_128_VLM_deeper150_55grad_001beta/best_model.pth"  # Update this path to your model
+	model_path = "/home/kurt/IRL/RoboCLIP/metaworld/drawer-close-v2-goal-hidden_interactiveTESTING_hyperparams/best_model.pth"  # home/kurt/IRL/RoboCLIP/metaworld/drawer-open-v2-goal-hidden_interactiveTESTa2cT_timed_128_VLM_deeper150_55grad_001beta_w_eval/best_model.pth
 	visualize_policy(env_id, model_path,a2c=True)
