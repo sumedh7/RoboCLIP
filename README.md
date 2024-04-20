@@ -46,4 +46,9 @@ Please use the older version of Metaworld, i.e., pre Farama Foundation. Also ren
 export MUJOCO_GL=egl
 ```
 ## How to use NL feedback
-python a2c_TAMER.py --env-type "interactive" --env-id drawer-close-v2-goal-hidden --text-string "robot opening green drawer" --n-envs 1 --total-time-steps 2560 --n-steps 128 --timed 1 --dir-add TESTING_hyperparams --VLM 1
+Bounded 0 = Using raw similarity score
+Bounded 1 = Using tanh to bound similarity to -50,50
+Bounded 2 = clipping similarity to -50,50
+```sh
+python a2c_TAMER.py --env-type "interactive" --env-id drawer-close-v2-goal-hidden --text-string "robot opening green drawer" --n-envs 1 --total-time-steps 2560 --n-steps 128 --timed 1 --dir-add bounded_m50_50_tanh_critic_too_lowerlr_shallow --VLM 1 --bounded 1
+```
