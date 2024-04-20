@@ -75,15 +75,16 @@ def get_args():
 	parser.add_argument('--VLM', type=int, default=1)
 	parser.add_argument('--n-frames', type=int, default=32)
 	parser.add_argument('--evaluative', type=int, default=1)
+	parser.add_argument('--bounded',type=int,default=0)
 	args = parser.parse_args()
 	return args
 
 def mish(input):
-    return input * torch.tanh(F.softplus(input))
+	return input * torch.tanh(F.softplus(input))
 
 class Mish(nn.Module):
-    def __init__(self): super().__init__()
-    def forward(self, input): return mish(input)
+	def __init__(self): super().__init__()
+	def forward(self, input): return mish(input)
 
 class MetaworldInteractive(Env):
 	def __init__(self, env_id, max_episode_steps,text_string=None, time=False, video_path=None, rank=0, human=True):
@@ -310,20 +311,21 @@ class Actor(nn.Module):
 		super().__init__()
 		self.n_actions = n_actions
 		self.model = nn.Sequential(
-			nn.Linear(state_dim, 150),
+			nn.Linear(state_dim, 256),
 			activation(),
-			nn.Linear(150, 150),
+			nn.Linear(256, 256),
 			activation(),
-			nn.Linear(150, 128),
-			activation(),
-			nn.Linear(128, n_actions)
+			nn.Linear(256, n_actions)
 		)
 		
 		logstds_param = nn.Parameter(torch.full((n_actions,), 0.1))
 		self.register_parameter("logstds", logstds_param)
 	
-	def forward(self, X):
+	def forward(self, X,deterministic=False):
 		means = self.model(X)
+		if deterministic:
+			# Return the means directly for deterministic action selection
+			return means
 		stds = torch.clamp(self.logstds.exp(), 1e-3, 50)
 		
 		return torch.distributions.Normal(means, stds)
@@ -333,17 +335,20 @@ class Critic(nn.Module):
 	def __init__(self, state_dim, activation=nn.Tanh):
 		super().__init__()
 		self.model = nn.Sequential(
-			nn.Linear(state_dim, 150),
+			nn.Linear(state_dim, 256),
 			activation(),
-			nn.Linear(150, 150),
+			nn.Linear(256, 256),
 			activation(),
-			nn.Linear(150, 128),
-			activation(),
-			nn.Linear(128, 1),
+			nn.Linear(256, 1),
 		)
 	
 	def forward(self, X):
-		return self.model(X)
+		output = self.model(X)
+		if args.bounded==1:
+			output=50 * torch.tanh(output)
+		elif args.bounded==2:
+			output=torch.clamp(output, -50, 50)
+		return output
 
 def clip_grad_norm_(module, max_grad_norm):
 	nn.utils.clip_grad_norm_([p for g in module.param_groups for p in g["params"]], max_grad_norm)
@@ -358,8 +363,8 @@ class CreditAssignment():
 	
 
 class A2CLearner():
-	def __init__(self, actor, critic, queue, entropy_beta=0.0001,
-				 actor_lr=8e-4, critic_lr=7e-3, max_grad_norm=0.60):
+	def __init__(self, actor, critic, queue, entropy_beta=0.001,
+				 actor_lr=1e-4, critic_lr=1e-3, max_grad_norm=0.50):
 		self.max_grad_norm = max_grad_norm
 		self.actor = actor
 		self.critic = critic
@@ -370,10 +375,19 @@ class A2CLearner():
 		self.buffer = BufferDeque(1000)
 		self.sliding_window = deque()
 
-	def get_action(self,state,action_s_l,action_s_m):
-		dists = self.actor(t(state))
-		actions = dists.sample().detach().data.numpy()
-		actions_clipped = np.clip(actions, action_s_l, action_s_m)
+		if args.pretrained:
+			checkpoint = torch.load(args.pretrained)
+			self.actor_optim.load_state_dict(checkpoint['actor_optim_state_dict'])
+			self.critic_optim.load_state_dict(checkpoint['critic_optim_state_dict'])
+
+
+	def get_action(self,state,action_s_l,action_s_m,deterministic=False):
+		dists = self.actor(t(state),deterministic)
+		if deterministic:
+			actions_clipped = np.clip(dists.detach().data.numpy(), action_s_l, action_s_m)
+		else:
+			actions = dists.sample().detach().data.numpy()
+			actions_clipped = np.clip(actions, action_s_l, action_s_m)
 		#print("ACTION: ",actions_clipped)
 		return actions_clipped
 	
@@ -382,6 +396,7 @@ class A2CLearner():
 
 		predicted_feedbacks = self.critic(states)
 		predicted_feedbacks = predicted_feedbacks.squeeze(1)
+		#print("PREDICTION: ",predicted_feedbacks,"FEEDBACK: ",fb)
 		#print("pred_fb_shape:", predicted_feedbacks.shape)
 		#print("fb_shape:", fb.shape)
 		#print("credits_shape:", credits.shape)
@@ -444,7 +459,7 @@ class Runner():
 		self.eval_freq=eval_freq
 		self.best_mean_reward = -np.inf
 		self.eval_env=eval_env
-		self.save_path=log_dir
+		self.save_path=log_dir	
 		self.VLM=VLM
 		self.evaluative=evaluative
 
@@ -457,12 +472,14 @@ class Runner():
 			while not done:
 				obs_tensor = obs
 				with torch.no_grad():
-					action_pred = self.a2clearner.get_action(obs_tensor,self.eval_env.action_space.low.min(),self.eval_env.action_space.high.max())
+					self.a2clearner.actor.eval()
+					action_pred = self.a2clearner.get_action(obs_tensor,self.eval_env.action_space.low.min(),self.eval_env.action_space.high.max(),True)
 				obs, reward, done, _ = self.eval_env.step(action_pred)
 				total_reward += reward
 			total_rewards.append(total_reward)
 		avg_reward = sum(total_rewards) / len(total_rewards)
 		writer.add_scalar("eval_avg_reward", avg_reward, global_step=self.steps)
+		self.a2clearner.actor.train()
 		return avg_reward
 
 	def feedback(self):
@@ -476,9 +493,15 @@ class Runner():
 					new_instruction = input()  # Assuming new instruction is text. Modify as needed.
 					# Process new instruction
 					fb = self.env.get_similarity(new_instruction,False)
+					if args.bounded==1:
+						fb = 50 * np.tanh(fb)
+					elif args.bounded==2:
+						fb=np.clip(fb, -50, 50)
 				else:
 					fb=int(input())
 				print("Feedback: ",fb)
+			writer.add_scalar("step_feedback", fb, global_step=self.steps)
+			writer.flush()
 			self.state_start_time = self.steps
 			self.queue.put(
 					dict(
@@ -515,7 +538,7 @@ class Runner():
 			ca = CreditAssignment(norm(loc=0, scale=32/4))
 			state, action, credit = [], [], []
 			for win in self.sliding_window:
-				if h_time-win["s_start"]>32:
+				if h_time-win["s_start"]>31:
 					credit_for_state=0
 				else:
 					credit_for_state = ca(s_start=win["s_start"],h_start=h_time)
@@ -544,7 +567,9 @@ class Runner():
 				self.best_mean_reward = mean_reward
 				torch.save({
 			'actor_model_state_dict': self.a2clearner.actor.state_dict(),
-			'critic_model_state_dict': self.a2clearner.critic.state_dict()},os.path.join(self.save_path, "best_model.pth"))
+			'critic_model_state_dict': self.a2clearner.critic.state_dict(),
+			'actor_optim_state_dict': self.a2clearner.actor_optim.state_dict(),
+			'critic_optim_state_dict': self.a2clearner.critic_optim.state_dict()},os.path.join(self.save_path, "best_model.pth"))
 				print(f"New best model saved with mean reward: {mean_reward}")
 		
 	def reset(self):
@@ -557,7 +582,7 @@ class Runner():
 		for i in range(max_steps):
 			if self.done: self.reset()
 			
-			self.action=self.a2clearner.get_action(self.state,self.env.action_space.low.min(),self.env.action_space.high.max())
+			self.action=self.a2clearner.get_action(self.state,self.env.action_space.low.min(),self.env.action_space.high.max(),False)
 
 			self.after_set_action()
 
@@ -616,6 +641,12 @@ def main():
 	n_actions = env.action_space.shape[0]
 	actor = Actor(state_dim, n_actions,activation=Mish)
 	critic = Critic(state_dim,activation=Mish)
+	if args.pretrained:
+		checkpoint = torch.load(args.pretrained)
+		actor.load_state_dict(checkpoint['actor_model_state_dict'])
+		critic.load_state_dict(checkpoint['critic_model_state_dict'])
+		actor.train()
+		critic.train()
 	
 		# Assuming 'env' is your Gym environment instance
 	'''observation_dim = env.observation_space.shape[0]
@@ -647,6 +678,11 @@ def main():
 	
 	while runner.steps<args.total_time_steps:
 		runner.run(args.n_steps)
+		torch.save({
+				'actor_model_state_dict': learner.actor.state_dict(),
+				'critic_model_state_dict': learner.critic.state_dict(),
+				'actor_optim_state_dict': learner.actor_optim.state_dict(),
+				'critic_optim_state_dict': learner.critic_optim.state_dict()},os.path.join(log_dir, "trained.pth"))
 
 	
 

@@ -1,0 +1,39 @@
+Deep256
+self.model = nn.Sequential(
+			nn.Linear(state_dim, 256),
+			activation(),
+			nn.Linear(256, 256),
+			activation(),
+			nn.Linear(256, 256),
+			activation(),
+			nn.Linear(256, n_actions)
+		)
+	
+	lowlr actor_lr=1e-4, critic_lr=1e-3,
+	mediumlr actor_lr=2e-4, critic_lr=3e-3,
+	highlr actor_lr=5e-4, critic_lr=8e-3,
+Shallow
+self.model = nn.Sequential(
+			nn.Linear(state_dim, 150),
+			activation(),
+			nn.Linear(150, 128),
+			activation(),
+			nn.Linear(128, n_actions)
+		)
+		
+	lowlr actor_lr=1e-4, critic_lr=1e-3,
+	mediumlr actor_lr=2e-4, critic_lr=3e-3,
+	highlr actor_lr=3e-4, critic_lr=5e-3,
+
+Shallow256
+self.model = nn.Sequential(
+			nn.Linear(state_dim, 256),
+			activation(),
+			nn.Linear(256, 256),
+			activation(),
+			nn.Linear(256, n_actions)
+		)
+		
+	lowlr actor_lr=1e-4, critic_lr=1e-3,
+	mediumlr actor_lr=2e-4, critic_lr=3e-3,
+	highlr actor_lr=3e-4, critic_lr=5e-3,

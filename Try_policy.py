@@ -57,8 +57,6 @@ class Actor(nn.Module):
 		self.model = nn.Sequential(
 			nn.Linear(state_dim, 150),
 			activation(),
-			nn.Linear(150, 150),
-			activation(),
 			nn.Linear(150, 128),
 			activation(),
 			nn.Linear(128, n_actions)
@@ -67,8 +65,11 @@ class Actor(nn.Module):
 		logstds_param = nn.Parameter(torch.full((n_actions,), 0.1))
 		self.register_parameter("logstds", logstds_param)
 	
-	def forward(self, X):
+	def forward(self, X,deterministic=False):
 		means = self.model(X)
+		if deterministic:
+			# Return the means directly for deterministic action selection
+			return means
 		stds = torch.clamp(self.logstds.exp(), 1e-3, 50)
 		
 		return torch.distributions.Normal(means, stds)
@@ -160,7 +161,7 @@ class MetaworldSparse(Env):
 			#print("INSIDE")
 			frames = self.preprocess_metaworld(self.past_observations)
 			fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-			out = cv2.VideoWriter('best_model_a2c_128length_close_VLM_deep150_65grad_0001beta_smaller_lr.mp4', fourcc, 20, (640, 480))
+			out = cv2.VideoWriter('last_model_TESTarch.mp4', fourcc, 20, (640, 480))
 
 			for frame in self.past_observations:
 				# Convert frames to BGR format for OpenCV if necessary
@@ -194,7 +195,7 @@ def t(x):
 	x = np.array(x) if not isinstance(x, np.ndarray) else x
 	return torch.from_numpy(x).float()
 
-def visualize_policy(env_id, model_path,a2c):
+def visualize_policy(env_id, model_path,a2c,det=True):
 	#env = MetaworldSparse(env_id=env_id, video_path="./gifs/human_opening_door.gif", time=True, rank=0, human=True)
 	env = MetaworldSparse(env_id=env_id,max_episode_steps=128 ,text_string="robot closing green drawer", time=True, rank=0, human=True)
 	env = TimeLimit(env, max_episode_steps=128)
@@ -211,11 +212,15 @@ def visualize_policy(env_id, model_path,a2c):
 	count=0
 	for _ in range(128):  # Adjust the range for longer or shorter episodes
 		if a2c:
-			dists = model(t(obs))
-			actions = dists.sample().detach().data.numpy()
-			action = np.clip(actions, env.action_space.low.min(), env.action_space.high.max())
+			action = model(t(obs),det)
+			#action = np.clip(action, env.action_space.low.min(), env.action_space.high.max())
+			if det:
+				action = np.clip(action.detach().data.numpy(),env.action_space.low.min(), env.action_space.high.max())
+			else:
+				actions = action.sample().detach().data.numpy()
+				action= np.clip(actions, env.action_space.low.min(), env.action_space.high.max())
 		else:
-			action, _states = model.predict(obs, deterministic=True)
+			action, _states = model.predict(obs, det=True)
 		obs, rewards, dones, info = env.step(action)
 		count+=1
 		if dones:
@@ -225,5 +230,5 @@ def visualize_policy(env_id, model_path,a2c):
 
 if __name__ == "__main__":
 	env_id = "drawer-close-v2-goal-hidden"  # Replace with your environment ID
-	model_path = "/home/kurt/IRL/RoboCLIP/metaworld/drawer-close-v2-goal-hidden_interactiveTESTING_hyperparams/best_model.pth"  # home/kurt/IRL/RoboCLIP/metaworld/drawer-open-v2-goal-hidden_interactiveTESTa2cT_timed_128_VLM_deeper150_55grad_001beta_w_eval/best_model.pth
-	visualize_policy(env_id, model_path,a2c=True)
+	model_path = "/home/kurt/IRL/RoboCLIP/metaworld/drawer-close-v2-goal-hidden_interactivebounded_m50_50_tanh_critic_too_higherlr_shallow/trained.pth"  # home/kurt/IRL/RoboCLIP/metaworld/drawer-open-v2-goal-hidden_interactiveTESTa2cT_timed_128_VLM_deeper150_55grad_001beta_w_eval/best_model.pth
+	visualize_policy(env_id, model_path,a2c=True,det=True)
