@@ -55,11 +55,11 @@ class Actor(nn.Module):
 		super().__init__()
 		self.n_actions = n_actions
 		self.model = nn.Sequential(
-			nn.Linear(state_dim, 150),
+			nn.Linear(state_dim, 256),
 			activation(),
-			nn.Linear(150, 128),
+			nn.Linear(256, 64),
 			activation(),
-			nn.Linear(128, n_actions)
+			nn.Linear(64, n_actions)
 		)
 		
 		logstds_param = nn.Parameter(torch.full((n_actions,), 0.1))
@@ -161,7 +161,7 @@ class MetaworldSparse(Env):
 			#print("INSIDE")
 			frames = self.preprocess_metaworld(self.past_observations)
 			fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-			out = cv2.VideoWriter('last_model_TESTarch.mp4', fourcc, 20, (640, 480))
+			out = cv2.VideoWriter('best_model_bounded_m50_50_tanh_critic_too_lowlr_shallow256_64_longer.mp4', fourcc, 20, (640, 480))
 
 			for frame in self.past_observations:
 				# Convert frames to BGR format for OpenCV if necessary
@@ -230,5 +230,5 @@ def visualize_policy(env_id, model_path,a2c,det=True):
 
 if __name__ == "__main__":
 	env_id = "drawer-close-v2-goal-hidden"  # Replace with your environment ID
-	model_path = "/home/kurt/IRL/RoboCLIP/metaworld/drawer-close-v2-goal-hidden_interactivebounded_m50_50_tanh_critic_too_higherlr_shallow/trained.pth"  # home/kurt/IRL/RoboCLIP/metaworld/drawer-open-v2-goal-hidden_interactiveTESTa2cT_timed_128_VLM_deeper150_55grad_001beta_w_eval/best_model.pth
+	model_path = "/home/kurt/IRL/RoboCLIP/metaworld/drawer-close-v2-goal-hidden_interactivebounded_m50_50_tanh_critic_too_lowlr_shallow256_64_longer/best_model.pth"  # home/kurt/IRL/RoboCLIP/metaworld/drawer-open-v2-goal-hidden_interactiveTESTa2cT_timed_128_VLM_deeper150_55grad_001beta_w_eval/best_model.pth
 	visualize_policy(env_id, model_path,a2c=True,det=True)

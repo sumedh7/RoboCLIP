@@ -313,9 +313,9 @@ class Actor(nn.Module):
 		self.model = nn.Sequential(
 			nn.Linear(state_dim, 256),
 			activation(),
-			nn.Linear(256, 256),
+			nn.Linear(256, 64),
 			activation(),
-			nn.Linear(256, n_actions)
+			nn.Linear(64, n_actions)
 		)
 		
 		logstds_param = nn.Parameter(torch.full((n_actions,), 0.1))
@@ -337,9 +337,9 @@ class Critic(nn.Module):
 		self.model = nn.Sequential(
 			nn.Linear(state_dim, 256),
 			activation(),
-			nn.Linear(256, 256),
+			nn.Linear(256, 64),
 			activation(),
-			nn.Linear(256, 1),
+			nn.Linear(64, 1),
 		)
 	
 	def forward(self, X):
@@ -364,7 +364,7 @@ class CreditAssignment():
 
 class A2CLearner():
 	def __init__(self, actor, critic, queue, entropy_beta=0.001,
-				 actor_lr=1e-4, critic_lr=1e-3, max_grad_norm=0.50):
+				 actor_lr=2e-4, critic_lr=3e-3, max_grad_norm=0.50):
 		self.max_grad_norm = max_grad_norm
 		self.actor = actor
 		self.critic = critic
