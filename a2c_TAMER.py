@@ -143,7 +143,8 @@ class MetaworldInteractive(Env):
 			frames=self.past_observations[-32:]'''
 		frames=self.past_observations[-32:]
 		for i in range(3):
-				for frame in frames: 
+				for frame in frames:
+					frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 					cv2.imshow('Frame', frame)
 					cv2.waitKey(100)  # 100ms delay between frames
 				cv2.destroyAllWindows()  # Close the window after displaying the frames
@@ -457,7 +458,8 @@ class Runner():
 		self.sliding_window = deque()
 		self.a2clearner = a2clearner
 		self.eval_freq=eval_freq
-		self.best_mean_reward = -np.inf
+		self.best_mean_reward_det = -np.inf
+		self.best_mean_reward_st = -np.inf
 		self.eval_env=eval_env
 		self.save_path=log_dir	
 		self.VLM=VLM
@@ -477,10 +479,25 @@ class Runner():
 				obs, reward, done, _ = self.eval_env.step(action_pred)
 				total_reward += reward
 			total_rewards.append(total_reward)
-		avg_reward = sum(total_rewards) / len(total_rewards)
-		writer.add_scalar("eval_avg_reward", avg_reward, global_step=self.steps)
+		avg_reward_det = sum(total_rewards) / len(total_rewards)
+		writer.add_scalar("eval_avg_reward_deterministic", avg_reward_det, global_step=self.steps)
+		total_rewards = []
+		for _ in range(10):  # Evaluate over 10 episodes
+			obs = self.eval_env.reset()
+			done = False
+			total_reward = 0
+			while not done:
+				obs_tensor = obs
+				with torch.no_grad():
+					self.a2clearner.actor.eval()
+					action_pred = self.a2clearner.get_action(obs_tensor,self.eval_env.action_space.low.min(),self.eval_env.action_space.high.max(), False)
+				obs, reward, done, _ = self.eval_env.step(action_pred)
+				total_reward += reward
+			total_rewards.append(total_reward)
+		avg_reward_st = sum(total_rewards) / len(total_rewards)
+		writer.add_scalar("eval_avg_reward_stochastic", avg_reward_st, global_step=self.steps)
 		self.a2clearner.actor.train()
-		return avg_reward
+		return avg_reward_det,avg_reward_st
 
 	def feedback(self):
 			fb=0
@@ -562,15 +579,23 @@ class Runner():
 			self.a2clearner.learn(state, action, feedback,credit , self.steps)
 				  
 		if self.steps % self.eval_freq == 0:
-			mean_reward = self.evaluate_model()
-			if mean_reward > self.best_mean_reward:
-				self.best_mean_reward = mean_reward
+			mean_reward_det,mean_reward_st = self.evaluate_model()
+			if mean_reward_det > self.best_mean_reward_det:
+				self.best_mean_reward_det = mean_reward_det
 				torch.save({
 			'actor_model_state_dict': self.a2clearner.actor.state_dict(),
 			'critic_model_state_dict': self.a2clearner.critic.state_dict(),
 			'actor_optim_state_dict': self.a2clearner.actor_optim.state_dict(),
-			'critic_optim_state_dict': self.a2clearner.critic_optim.state_dict()},os.path.join(self.save_path, "best_model.pth"))
-				print(f"New best model saved with mean reward: {mean_reward}")
+			'critic_optim_state_dict': self.a2clearner.critic_optim.state_dict()},os.path.join(self.save_path, "best_model_det.pth"))
+				print(f"New best deterministic model saved with mean reward: {mean_reward_det}")
+			if mean_reward_st > self.best_mean_reward_st:
+				self.best_mean_reward_st = mean_reward_st
+				torch.save({
+			'actor_model_state_dict': self.a2clearner.actor.state_dict(),
+			'critic_model_state_dict': self.a2clearner.critic.state_dict(),
+			'actor_optim_state_dict': self.a2clearner.actor_optim.state_dict(),
+			'critic_optim_state_dict': self.a2clearner.critic_optim.state_dict()},os.path.join(self.save_path, "best_model_st.pth"))
+				print(f"New best stochastic model saved with mean reward: {mean_reward_st}")
 		
 	def reset(self):
 		self.episode_reward = 0
@@ -678,11 +703,17 @@ def main():
 	
 	while runner.steps<args.total_time_steps:
 		runner.run(args.n_steps)
-		torch.save({
-				'actor_model_state_dict': learner.actor.state_dict(),
-				'critic_model_state_dict': learner.critic.state_dict(),
-				'actor_optim_state_dict': learner.actor_optim.state_dict(),
-				'critic_optim_state_dict': learner.critic_optim.state_dict()},os.path.join(log_dir, "trained.pth"))
+		if ((runner.steps-1)/args.n_steps)%5==0:
+			torch.save({
+					'actor_model_state_dict': learner.actor.state_dict(),
+					'critic_model_state_dict': learner.critic.state_dict(),
+					'actor_optim_state_dict': learner.actor_optim.state_dict(),
+					'critic_optim_state_dict': learner.critic_optim.state_dict()},os.path.join(log_dir, f"trained_{((runner.steps-1)/args.n_steps)}.pth"))
+	torch.save({
+					'actor_model_state_dict': learner.actor.state_dict(),
+					'critic_model_state_dict': learner.critic.state_dict(),
+					'actor_optim_state_dict': learner.actor_optim.state_dict(),
+					'critic_optim_state_dict': learner.critic_optim.state_dict()},os.path.join(log_dir, "trained.pth"))
 
 	
 
