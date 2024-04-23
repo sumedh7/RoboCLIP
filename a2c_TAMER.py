@@ -552,7 +552,7 @@ class Runner():
 		)
 
 		if fb != 0:
-			ca = CreditAssignment(norm(loc=0, scale=32/4))
+			ca = CreditAssignment(norm(loc=0, scale=16))#norm(loc=0,scale=16) for decaying into the past
 			state, action, credit = [], [], []
 			for win in self.sliding_window:
 				if h_time-win["s_start"]>31:
