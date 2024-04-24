@@ -314,9 +314,11 @@ class Actor(nn.Module):
 		self.model = nn.Sequential(
 			nn.Linear(state_dim, 256),
 			activation(),
-			nn.Linear(256, 64),
+			nn.Linear(256, 128),
 			activation(),
-			nn.Linear(64, n_actions)
+			nn.Linear(128, 32),
+			activation(),	
+			nn.Linear(32, n_actions)
 		)
 		
 		logstds_param = nn.Parameter(torch.full((n_actions,), 0.1))
@@ -338,9 +340,11 @@ class Critic(nn.Module):
 		self.model = nn.Sequential(
 			nn.Linear(state_dim, 256),
 			activation(),
-			nn.Linear(256, 64),
+			nn.Linear(256, 128),
 			activation(),
-			nn.Linear(64, 1),
+			nn.Linear(128, 32),
+			activation(),	
+			nn.Linear(32, 1),
 		)
 	
 	def forward(self, X):
@@ -401,7 +405,7 @@ class A2CLearner():
 		#print("pred_fb_shape:", predicted_feedbacks.shape)
 		#print("fb_shape:", fb.shape)
 		#print("credits_shape:", credits.shape)
-		advantage = credits * (predicted_feedbacks - fb) ** 2
+		advantage = credits * (fb-predicted_feedbacks)
 		advantage_expanded = advantage.unsqueeze(-1)
 
 		# actor
@@ -505,9 +509,21 @@ class Runner():
 			if self.steps % args.n_frames == 0 and self.steps!=0:
 				#if self.evaluative:
 				print(args.n_frames," steps reached. Please provide feedback (",self.env.get_counter()-1,"/",args.n_steps,"):")
-				self.env.show_progress()
+				#self.env.show_progress()
 				if self.VLM:
-					new_instruction = input()  # Assuming new instruction is text. Modify as needed.
+					#new_instruction = input()  # Assuming new instruction is text. Modify as needed.
+					if (self.env.get_counter()-1)==32:
+						#new_instruction="robot arm closing black box by pushing door handle"
+						new_instruction="robot pushing green drawer by the handle"
+					elif (self.env.get_counter()-1)==64:
+						#new_instruction="robot arm moving left closing black box door by pushing door handle"
+						new_instruction="robot closing green drawer by continuously sliding green drawer"
+					elif (self.env.get_counter()-1)==96:
+						#new_instruction="robot arm moving left closing black box door by pushing door handle"
+						new_instruction="robot closing green drawer by continuously sliding green drawer"
+					elif (self.env.get_counter()-1)==128:
+						#new_instruction="robot closing black box completely"
+						new_instruction="robot with green drawer completely closed"
 					# Process new instruction
 					fb = self.env.get_similarity(new_instruction,False)
 					if args.bounded==1:
@@ -533,6 +549,7 @@ class Runner():
 		if len(self.buffer) > 30:      
 			# Only train every certain number of steps
 			if self.steps % 16 == 0 and self.steps>0: 
+				#print("training with buffer")
 				#rand_batch = np.random.randint(len(buffer), size=batch_size) 
 				state, action, feedback, credit = self.buffer.random_sample(batch)
 				self.a2clearner.learn(state, action, feedback,credit , self.steps) 
@@ -561,7 +578,7 @@ class Runner():
 					credit_for_state = ca(s_start=win["s_start"],h_start=h_time)
 				#print("credit",credit_for_state,"s_start",win["s_start"],"h_start",h_time)
 				if credit_for_state !=0:
-					print("credit: ",credit_for_state, "step: ",win["s_start"])
+					#print("credit: ",credit_for_state, "step: ",win["s_start"])
 					state.append(t(win['state']))
 					action.append(t(win['action']))
 					# credit.append(torch.tensor(credit_for_state, dtype=torch.float32).to(device))
