@@ -312,13 +312,13 @@ class Actor(nn.Module):
 		super().__init__()
 		self.n_actions = n_actions
 		self.model = nn.Sequential(
-			nn.Linear(state_dim, 256),
+			nn.Linear(state_dim, 80),
 			activation(),
-			nn.Linear(256, 128),
+			nn.Linear(80, 64),
 			activation(),
-			nn.Linear(128, 32),
+			nn.Linear(64, 16),
 			activation(),	
-			nn.Linear(32, n_actions)
+			nn.Linear(16, n_actions)
 		)
 		
 		logstds_param = nn.Parameter(torch.full((n_actions,), 0.1))
@@ -338,13 +338,13 @@ class Critic(nn.Module):
 	def __init__(self, state_dim, activation=nn.Tanh):
 		super().__init__()
 		self.model = nn.Sequential(
-			nn.Linear(state_dim, 256),
+			nn.Linear(state_dim, 80),
 			activation(),
-			nn.Linear(256, 128),
+			nn.Linear(80, 64),
 			activation(),
-			nn.Linear(128, 32),
+			nn.Linear(64, 16),
 			activation(),	
-			nn.Linear(32, 1),
+			nn.Linear(16, 1),
 		)
 	
 	def forward(self, X):
@@ -368,8 +368,8 @@ class CreditAssignment():
 	
 
 class A2CLearner():
-	def __init__(self, actor, critic, queue, entropy_beta=0.001,
-				 actor_lr=2e-4, critic_lr=3e-3, max_grad_norm=0.50):
+	def __init__(self, actor, critic, queue, entropy_beta=0.0001,
+				 actor_lr=2e-4, critic_lr=2e-3, max_grad_norm=0.50):
 		self.max_grad_norm = max_grad_norm
 		self.actor = actor
 		self.critic = critic
@@ -509,21 +509,29 @@ class Runner():
 			if self.steps % args.n_frames == 0 and self.steps!=0:
 				#if self.evaluative:
 				print(args.n_frames," steps reached. Please provide feedback (",self.env.get_counter()-1,"/",args.n_steps,"):")
-				#self.env.show_progress()
+				self.env.show_progress()
 				if self.VLM:
-					#new_instruction = input()  # Assuming new instruction is text. Modify as needed.
-					if (self.env.get_counter()-1)==32:
+					new_instruction = input()  # Assuming new instruction is text. Modify as needed.
+					'''if (self.env.get_counter()-1)==32:
 						#new_instruction="robot arm closing black box by pushing door handle"
-						new_instruction="robot pushing green drawer by the handle"
+						#new_instruction="robot moving toward green drawer handle to pull it"
+						#new_instruction="robot pushing green drawer by the handle"
+						new_instruction="robot moving straight forward toward red button to push it against the yellow wall"
 					elif (self.env.get_counter()-1)==64:
 						#new_instruction="robot arm moving left closing black box door by pushing door handle"
-						new_instruction="robot closing green drawer by continuously sliding green drawer"
+						#new_instruction="robot gripper close to the green drawer handle to grip it"
+						#new_instruction="robot closing green drawer by continuously sliding green drawer"
+						new_instruction="robot closer to red button by moving straight toward red button"
 					elif (self.env.get_counter()-1)==96:
 						#new_instruction="robot arm moving left closing black box door by pushing door handle"
-						new_instruction="robot closing green drawer by continuously sliding green drawer"
+						#new_instruction="robot gripper gripping green drawer handle pulling green drawer open"
+						#new_instruction="robot closing green drawer by continuously sliding green drawer"
+						new_instruction="robot directly in front of red button pushing red button against yellow wall"
 					elif (self.env.get_counter()-1)==128:
 						#new_instruction="robot closing black box completely"
-						new_instruction="robot with green drawer completely closed"
+						#new_instruction="robot pulling green drawer completely open by the handle"
+						#new_instruction="robot with green drawer completely closed"
+						new_instruction="robot pushing red button against the yellow wall"'''
 					# Process new instruction
 					fb = self.env.get_similarity(new_instruction,False)
 					if args.bounded==1:
