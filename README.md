@@ -18,6 +18,9 @@ wget https://www.rocq.inria.fr/cluster-willow/amiech/howto100m/s3d_howto100m.pth
 wget https://www.rocq.inria.fr/cluster-willow/amiech/howto100m/s3d_dict.npy
 ```
 
+If you're running into download issues with the S3D weights (last 2 commands), the two files can also be obtained from our google drive:
+https://drive.google.com/file/d/1DN8t1feS0t5hYYTfXQfZd596Pu9yXJIr/view?usp=sharing
+https://drive.google.com/file/d/1p_CMGppAQk3B0_Z0i1r2AN_D1FM3kUFW/view?usp=sharing
 
 ## How To use it ?
 
