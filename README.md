@@ -16,6 +16,7 @@ pip install -e kitchen_alt
 pip install -e kitchen_alt/kitchen/envs
 wget https://www.rocq.inria.fr/cluster-willow/amiech/howto100m/s3d_howto100m.pth
 wget https://www.rocq.inria.fr/cluster-willow/amiech/howto100m/s3d_dict.npy
+mv S3D_HowTo100M/s3dg.py ./
 ```
 
 If you're running into download issues with the S3D weights (last 2 commands), the two files can also be obtained from our google drive:
